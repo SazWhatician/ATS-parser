@@ -2,7 +2,7 @@
 
 **Author & Creator:** saswa  
 **Project:** Local-First ATS Resume Parser & Rubric Evaluation Engine  
-**System Status:** `Phase 1: In Progress` | `Phase 2: Planned` | `Phase 3: Planned` | `Phase 4: Planned`
+**System Status:** `Phase 1: Completed 🟢` | `Phase 2: Completed 🟢` | `Phase 3: Completed 🟢` | `Phase 4: Completed 🟢`
 
 ---
 
@@ -12,10 +12,10 @@ This documentation is organized **strictly phase-wise** to provide a comprehensi
 
 | Phase | Milestone Name | Key Objective & Description | Status | Reference Doc |
 | :---: | :--- | :--- | :---: | :--- |
-| **Phase 1** | **Core Document Ingestion & Text Normalizer** | Extract pristine text and identify structural sections from `.pdf`, `.docx`, and `.txt` files with zero data loss or encoding corruption. | `🟡 In Progress` | [phase-1.md](file:///c:/Users/saswa/Desktop/parse%20ATS/study_docs/phase-1.md) |
-| **Phase 2** | **Candidate Entity Extraction Engine** | Convert unstructured resume text into a strongly typed `CandidateProfile` using deterministic offline regex heuristics + optional LLM adapters. | `⚪ Planned` | [phase-2.md](file:///c:/Users/saswa/Desktop/parse%20ATS/study_docs/phase-2.md) |
-| **Phase 3** | **Rubric-Based ATS Matcher & Gap Analysis** | Evaluate candidate profiles against target job descriptions using weighted scoring (Skills 40%, Experience 35%, Education 15%, Quality 10%). | `⚪ Planned` | [phase-3.md](file:///c:/Users/saswa/Desktop/parse%20ATS/study_docs/phase-3.md) |
-| **Phase 4** | **REST API & Anti-AI Slop Workstation UI** | FastAPI backend with `/parse`, `/score`, `/analyze` routes and an embedded, high-density dark-mode workstation testbench. | `⚪ Planned` | [phase-4.md](file:///c:/Users/saswa/Desktop/parse%20ATS/study_docs/phase-4.md) |
+| **Phase 1** | **Core Document Ingestion & Text Normalizer** | Extract pristine text and identify structural sections from `.pdf`, `.docx`, and `.txt` files with zero data loss or encoding corruption. | `🟢 Completed` | [phase-1.md](file:///c:/Users/saswa/Desktop/parse%20ATS/study_docs/phase-1.md) |
+| **Phase 2** | **Candidate Entity Extraction Engine** | Convert unstructured resume text into a strongly typed `CandidateProfile` using deterministic offline regex heuristics + optional LLM adapters. | `🟢 Completed` | [phase-2.md](file:///c:/Users/saswa/Desktop/parse%20ATS/study_docs/phase-2.md) |
+| **Phase 3** | **Rubric-Based ATS Matcher & Gap Analysis** | Evaluate candidate profiles against target job descriptions using weighted scoring (Skills 40%, Experience 35%, Education 15%, Quality 10%). | `🟢 Completed` | [phase-3.md](file:///c:/Users/saswa/Desktop/parse%20ATS/study_docs/phase-3.md) |
+| **Phase 4** | **REST API & Anti-AI Slop Workstation UI** | FastAPI backend with `/parse`, `/score`, `/analyze` routes and an embedded, high-density dark-mode workstation testbench. | `🟢 Completed` | [phase-4.md](file:///c:/Users/saswa/Desktop/parse%20ATS/study_docs/phase-4.md) |
 
 ---
 
