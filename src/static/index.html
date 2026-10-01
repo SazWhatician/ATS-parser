@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ATS Resume Parser & Evaluation Engine | Workstation</title>
+  <meta name="description" content="Local-first ATS Resume Parser, Entity Extractor, and Rubric Job Match Engine by saswa.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+
+  <!-- Top App Navigation -->
+  <header class="app-header">
+    <div class="header-brand">
+      <div class="brand-badge">ATS</div>
+      <div class="brand-title">
+        <h1>Parser & Match Engine</h1>
+        <span class="brand-sub">Local-First Evaluation Workstation • by saswa</span>
+      </div>
+    </div>
+    <div class="header-actions">
+      <div class="status-indicator">
+        <span class="status-dot"></span>
+        <span id="engine-status-text">Engine: Offline Heuristic</span>
+      </div>
+      <a href="/docs" target="_blank" class="nav-btn" title="Open API Documentation">API Docs</a>
+    </div>
+  </header>
+
+  <!-- Main Workstation Layout -->
+  <main class="workstation-container">
+
+    <!-- Left Column: Input Controls -->
+    <section class="panel left-panel">
+      <div class="panel-header">
+        <h2>Input Workstation</h2>
+        <span class="panel-subtitle">Upload resume and target job profile</span>
+      </div>
+
+      <form id="evaluation-form" class="workstation-form">
+        
+        <!-- File Dropzone -->
+        <div class="control-group">
+          <label class="control-label">Resume Document (.PDF, .DOCX, .TXT)</label>
+          <div id="dropzone" class="dropzone">
+            <input type="file" id="file-input" accept=".pdf,.docx,.txt" class="file-input-hidden">
+            <div class="dropzone-content">
+              <svg class="dropzone-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+              </svg>
+              <p class="dropzone-primary-text">Drag & drop resume file here</p>
+              <p class="dropzone-sub-text">or <span class="highlight-link">browse from local disk</span></p>
+            </div>
+            <div id="file-info" class="file-info-badge hidden">
+              <span id="file-name" class="file-name">resume.pdf</span>
+              <button type="button" id="remove-file-btn" class="remove-file-btn" title="Remove file">&times;</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Job Description Section -->
+        <div class="control-group">
+          <div class="label-with-presets">
+            <label class="control-label" for="jd-input">Target Job Description (Optional)</label>
+            <div class="presets-container">
+              <span class="preset-label">Presets:</span>
+              <button type="button" class="preset-btn" data-preset="backend">Backend Lead</button>
+              <button type="button" class="preset-btn" data-preset="frontend">Frontend Eng</button>
+              <button type="button" class="preset-btn" data-preset="ml">ML Specialist</button>
+            </div>
+          </div>
+          <textarea id="jd-input" class="textarea-jd" placeholder="Paste target job requirements, skills, and qualifications here to compute weighted ATS match score..." rows="7"></textarea>
+        </div>
+
+        <!-- Extraction Mode -->
+        <div class="control-group inline-group">
+          <div class="toggle-container">
+            <label class="toggle-switch">
+              <input type="checkbox" id="force-heuristic-checkbox" checked>
+              <span class="slider"></span>
+            </label>
+            <div class="toggle-labels">
+              <span class="toggle-main">Force Offline Heuristic Mode</span>
+              <span class="toggle-sub">Guaranteed 100% local (0 API keys, 0 network calls)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Trigger Button -->
+        <button type="submit" id="submit-btn" class="primary-btn" disabled>
+          <span class="btn-text">Run ATS Evaluation</span>
+          <span class="btn-shortcut">Ctrl + Enter</span>
+        </button>
+
+      </form>
+    </section>
+
+    <!-- Right Column: Results & Deep Dive -->
+    <section class="panel right-panel">
+      
+      <!-- Empty Placeholder State -->
+      <div id="empty-state" class="state-container">
+        <div class="empty-icon-box">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+            <polyline points="10 9 9 9 8 9"></polyline>
+          </svg>
+        </div>
+        <h3>No Resume Evaluated Yet</h3>
+        <p>Upload a candidate resume on the left panel and click <strong>Run ATS Evaluation</strong> to view structured candidate extraction and rubric scoring.</p>
+      </div>
+
+      <!-- Loading State -->
+      <div id="loading-state" class="state-container hidden">
+        <div class="spinner"></div>
+        <h3>Analyzing Resume & Computing Rubric...</h3>
+        <p class="loading-sub">Running text normalizer, entity extractor, and scoring algorithms.</p>
+      </div>
+
+      <!-- Results Display State -->
+      <div id="results-state" class="results-container hidden">
+        
+        <!-- Candidate Overview Card -->
+        <div class="card candidate-card">
+          <div class="candidate-primary">
+            <div class="candidate-avatar" id="avatar-initials">--</div>
+            <div class="candidate-meta">
+              <div class="candidate-name-row">
+                <h2 id="candidate-name">Candidate Name</h2>
+                <span id="candidate-domain" class="tag-domain">Engineering</span>
+              </div>
+              <div class="candidate-contacts" id="candidate-contacts">
+                <!-- Dynamically populated contacts -->
+              </div>
+            </div>
+          </div>
+          <div class="candidate-summary-box" id="summary-container">
+            <p id="candidate-summary">Professional summary will appear here.</p>
+          </div>
+        </div>
+
+        <!-- ATS Scoreboard -->
+        <div class="card scoreboard-card">
+          <div class="scoreboard-main">
+            <div class="score-gauge-box">
+              <div class="score-numeric" id="overall-score-num">--</div>
+              <div class="score-label" id="score-match-level">Overall Match</div>
+            </div>
+            <div class="categories-grid">
+              <div class="cat-pill">
+                <span class="cat-title">Tech Skills (40%)</span>
+                <span class="cat-value" id="score-tech">--</span>
+              </div>
+              <div class="cat-pill">
+                <span class="cat-title">Experience (35%)</span>
+                <span class="cat-value" id="score-exp">--</span>
+              </div>
+              <div class="cat-pill">
+                <span class="cat-title">Education (15%)</span>
+                <span class="cat-value" id="score-edu">--</span>
+              </div>
+              <div class="cat-pill">
+                <span class="cat-title">Quality (10%)</span>
+                <span class="cat-value" id="score-qual">--</span>
+              </div>
+            </div>
+          </div>
+          <div class="recommendation-banner" id="recommendation-banner">
+            <span class="rec-title">Recommendation:</span>
+            <span id="recommendation-text">--</span>
+          </div>
+        </div>
+
+        <!-- Strengths & Critical Gaps Row -->
+        <div class="strengths-gaps-row">
+          <div class="insight-box strengths-box">
+            <h4>Key Strengths</h4>
+            <ul id="strengths-list" class="insight-list"></ul>
+          </div>
+          <div class="insight-box gaps-box">
+            <h4>Critical Gaps & Missing Skills</h4>
+            <ul id="gaps-list" class="insight-list"></ul>
+          </div>
+        </div>
+
+        <!-- Deep-Dive Tabs -->
+        <div class="tabs-container">
+          <div class="tab-buttons">
+            <button type="button" class="tab-btn active" data-tab="timeline">Work Experience</button>
+            <button type="button" class="tab-btn" data-tab="skills">Categorized Skills</button>
+            <button type="button" class="tab-btn" data-tab="education">Education & Degrees</button>
+            <button type="button" class="tab-btn" data-tab="json">Raw JSON Payload</button>
+          </div>
+
+          <!-- Tab Content 1: Timeline -->
+          <div id="tab-timeline" class="tab-pane active">
+            <div id="experience-list" class="timeline-container">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+
+          <!-- Tab Content 2: Skills -->
+          <div id="tab-skills" class="tab-pane">
+            <div id="categorized-skills-container" class="skills-category-group">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+
+          <!-- Tab Content 3: Education -->
+          <div id="tab-education" class="tab-pane">
+            <div id="education-list" class="education-grid">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+
+          <!-- Tab Content 4: JSON Explorer -->
+          <div id="tab-json" class="tab-pane">
+            <div class="json-header">
+              <span>Structured API Response</span>
+              <button type="button" id="copy-json-btn" class="copy-btn">Copy JSON</button>
+            </div>
+            <pre class="json-display"><code id="json-code">{}</code></pre>
+          </div>
+        </div>
+
+        <!-- Run Telemetry Footer -->
+        <div class="telemetry-bar">
+          <span id="telemetry-time">Execution Time: -- ms</span>
+          <span id="telemetry-mode">Engine: Heuristic</span>
+        </div>
+
+      </div>
+
+    </section>
+
+  </main>
+
+  <footer class="app-footer">
+    <span>ATS Resume Parser & Rubric Evaluation Engine • Designed & Developed by <strong>saswa</strong></span>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
