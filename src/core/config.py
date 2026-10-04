@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     debug: bool = False
 
+    # TypeSafe / DocJev settings for document packet splitting & classification
+    typesafe_api_key: Optional[str] = None
+    enable_docjev: bool = True
+    typesafe_endpoint: str = "https://api.typesafe.ai/v1/systemone"
+
     # Optional LLM API keys - offline heuristic parser runs when these are None/empty
     openrouter_api_key: Optional[str] = None
     openrouter_model: str = "google/gemini-2.0-flash-001"
@@ -36,6 +41,16 @@ class Settings(BaseSettings):
     max_file_size_bytes: int = 15 * 1024 * 1024  # 15 MB
     allowed_extensions: List[str] = [".pdf", ".docx", ".txt"]
     temp_dir: str = "data/temp"
+
+    @property
+    def has_typesafe_key(self) -> bool:
+        """Returns True if a TypeSafe API key is configured."""
+        return bool(self.typesafe_api_key and self.typesafe_api_key.strip())
+
+    @property
+    def can_use_docjev(self) -> bool:
+        """Returns True if DocJev is enabled and TypeSafe key is present."""
+        return self.enable_docjev and self.has_typesafe_key
 
     @property
     def has_llm_key(self) -> bool:

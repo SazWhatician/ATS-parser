@@ -1,7 +1,7 @@
 """Deterministic heuristic resume parser (runs 100% offline with 0 API keys)."""
 
 import re
-from typing import List, Dict, Optional, Tuple, Set
+from typing import List, Dict, Optional, Tuple, Set, Any
 from src.parser.normalizer import NormalizedDocument
 from src.api.schemas.candidate import (
     CandidateProfile,
@@ -14,32 +14,36 @@ from src.api.schemas.candidate import (
 
 
 class HeuristicResumeParser:
-    """Offline rule- and regex-based entity extractor for resumes."""
+    """Offline rule- and regex-based entity extractor for resumes supporting international formats."""
 
     # Exhaustive dictionary of known technical skills across categories
     SKILLS_TAXONOMY = {
         "Languages": [
             "python", "javascript", "typescript", "go", "golang", "java", "c++", "c#", "rust",
-            "ruby", "php", "swift", "kotlin", "scala", "r", "dart", "sql", "bash", "shell", "html", "css"
+            "ruby", "php", "swift", "kotlin", "scala", "r", "dart", "sql", "bash", "shell", "html", "css", "elixir", "clojure"
         ],
         "Frameworks & Libraries": [
             "fastapi", "django", "flask", "react", "react.js", "next.js", "vue", "vue.js",
             "angular", "node.js", "nodejs", "express", "express.js", "spring", "spring boot",
             "dotnet", ".net", "asp.net", "laravel", "ruby on rails", "pytorch", "tensorflow",
-            "scikit-learn", "keras", "pandas", "numpy", "tailwind", "tailwindcss", "graphql"
+            "scikit-learn", "keras", "pandas", "numpy", "tailwind", "tailwindcss", "graphql",
+            "langchain", "llamaindex", "huggingface", "vllm", "transformers", "polars"
         ],
         "Databases & Caching": [
             "postgresql", "postgres", "mysql", "mongodb", "redis", "elasticsearch",
-            "sqlite", "cassandra", "dynamodb", "mariadb", "snowflake", "bigquery"
+            "sqlite", "cassandra", "dynamodb", "mariadb", "snowflake", "bigquery",
+            "chromadb", "pinecone", "qdrant", "weaviate", "duckdb", "clickhouse"
         ],
         "Cloud & DevOps": [
             "docker", "kubernetes", "k8s", "aws", "amazon web services", "azure",
             "gcp", "google cloud", "terraform", "ansible", "ci/cd", "jenkins",
-            "github actions", "gitlab ci", "linux", "nginx", "prometheus", "grafana"
+            "github actions", "gitlab ci", "linux", "nginx", "prometheus", "grafana",
+            "helm", "argocd", "datadog"
         ],
         "Developer Tools & Practices": [
             "git", "github", "gitlab", "jira", "agile", "scrum", "rest api", "restful",
-            "microservices", "grpc", "kafka", "rabbitmq", "celery", "unit testing", "tdd"
+            "microservices", "grpc", "kafka", "rabbitmq", "celery", "unit testing", "tdd",
+            "dbt", "airflow", "trino", "spark", "hadoop"
         ]
     }
 
@@ -53,7 +57,17 @@ class HeuristicResumeParser:
         r"\b(?:m\.?b\.?a\.?|master\s+of\s+business\s+administration)\b",
         r"\b(?:ph\.?d\.?|doctor\s+of\s+philosophy|doctorate)\b",
         r"\b(?:associate(?:'s)?\s+degree)\b",
+        r"\b(?:diploma|magister|licence|licenciatura)\b",
     ]
+
+    # Exact line matches to reject as names
+    GENERIC_HEADERS_AND_TITLES = {
+        "resume", "curriculum vitae", "cv", "summary", "experience", "education", "skills",
+        "technical skills", "work experience", "professional experience", "projects",
+        "certifications", "contact", "contact information", "personal info",
+        "software engineer", "senior software engineer", "full stack developer",
+        "backend developer", "frontend developer", "data scientist", "solutions architect"
+    }
 
     @classmethod
     def parse(cls, doc: NormalizedDocument) -> CandidateProfile:
@@ -86,40 +100,53 @@ class HeuristicResumeParser:
             extraction_mode="heuristic"
         )
 
-    # --- Contact Info Extraction ---
-
     @classmethod
     def _extract_contact_info(cls, text: str) -> ContactInfo:
-        """Extract name, email, phone, and links."""
+        """Extract name, email, international phone, and portfolio links."""
         lines = [line.strip() for line in text.split("\n") if line.strip()]
         
-        # 1. Name detection: first plausible line before contact symbols
+        # 1. Name detection: first plausible line supporting Unicode, international characters, and initials
         name = None
-        for line in lines[:6]:
+        for line in lines[:10]:
             lower = line.lower()
-            if any(term in lower for term in ["resume", "curriculum vitae", "cv", "page", "email:", "phone:"]):
+            # Skip contact lines or lines with email/URLs
+            if any(term in lower for term in ["@", "http:", "https:", "www.", "github.com", "linkedin.com", "phone:", "email:", "tel:"]):
                 continue
-            # If line is 2-4 words and contains letters only
-            words = line.split()
-            if 1 <= len(words) <= 4 and re.match(r"^[A-Za-z\s.'-]+$", line):
-                name = line.strip()
+
+            # Skip exact matches for generic resume headers or titles
+            if lower in cls.GENERIC_HEADERS_AND_TITLES or lower.startswith(("curriculum vitae", "page ")):
+                continue
+
+            # Strip honorifics e.g. Dr., Prof., Mr., Ms.
+            cleaned_line = re.sub(r"^(?:Dr\.|Prof\.|Mr\.|Ms\.|Mrs\.|Eng\.)\s+", "", line, flags=re.IGNORECASE).strip()
+            
+            # Allow accented letters (À-ÖØ-öø-ÿ), apostrophes, hyphens, and periods for initials (e.g. José Müller, Kavya N. Rao, Jane Developer)
+            words = cleaned_line.split()
+            if 1 <= len(words) <= 4 and re.match(r"^[A-Za-zÀ-ÖØ-öø-ÿ\s.'-]+$", cleaned_line):
+                # Avoid single-word lowercase words
+                if len(words) == 1 and cleaned_line.islower():
+                    continue
+                name = cleaned_line
                 break
 
         # 2. Email detection
         email_match = re.search(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b", text)
         email = email_match.group(0) if email_match else None
 
-        # 3. Phone detection
+        # 3. International Phone detection
         phone = None
-        phone_label_match = re.search(r"(?:Phone|Tel|Mobile|Cell)(?:\s*Number)?[:\s]+([+0-9()\-\s.]{7,25})", text, re.IGNORECASE)
+        # Explicit label search first
+        phone_label_match = re.search(r"(?:Phone|Tel|Mobile|Cell|WhatsApp)(?:\s*Number)?[:\s]+([+0-9()\-\s.]{7,25})", text, re.IGNORECASE)
         if phone_label_match:
             phone = phone_label_match.group(1).strip()
         else:
+            # Broad international regex supporting +country codes, parentheses, and spaces
             phone_match = re.search(
-                r"(?:(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}|\+?\d{10,14})",
+                r"(?:(?:\+|00)\d{1,4}[-.\s]?)?(?:\(?\d{2,5}\)?[-.\s]?)?\d{2,5}[-.\s]?\d{3,5}(?:[-.\s]?\d{1,5})?",
                 text
             )
-            phone = phone_match.group(0).strip() if phone_match else None
+            if phone_match and len(re.sub(r"\D", "", phone_match.group(0))) >= 8:
+                phone = phone_match.group(0).strip()
 
         # 4. Social & Portfolio Links
         linkedin_match = re.search(r"(?:https?://)?(?:www\.)?linkedin\.com/in/[A-Za-z0-9_-]+", text, re.IGNORECASE)
@@ -130,14 +157,14 @@ class HeuristicResumeParser:
 
         # 5. Location detection
         location = None
-        loc_match = re.search(r"(?:Location|Address):\s*([^\n|]+)", text, re.IGNORECASE)
+        loc_match = re.search(r"(?:Location|Address|City):\s*([^\n|]+)", text, re.IGNORECASE)
         if loc_match:
             location = loc_match.group(1).strip()
         else:
-            # Check for "City, State" pattern in the top 5 lines
-            for line in lines[:6]:
-                city_match = re.search(r"\b([A-Z][a-zA-Z\s]+,\s*[A-Z]{2}(?:\s+\d{5})?)\b", line)
-                if city_match:
+            for line in lines[:8]:
+                # City, State or City, Country format
+                city_match = re.search(r"\b([A-Z][a-zA-Z\s]+,\s*(?:[A-Z]{2}(?:\s+\d{5})?|[A-Z][a-zA-Z\s]+))\b", line)
+                if city_match and not any(term in line.lower() for term in ["university", "company", "school"]):
                     location = city_match.group(1).strip()
                     break
 
@@ -162,12 +189,9 @@ class HeuristicResumeParser:
         for category, skill_list in cls.SKILLS_TAXONOMY.items():
             cat_matches: List[str] = []
             for skill in skill_list:
-                # Use word boundary matching
                 escaped = re.escape(skill)
-                # Ensure special characters like ++ or . are handled in regex
-                pattern = rf"(?<![\w#+]){escaped}(?![\w#+])"
+                pattern = rf"(?<![\w#+.]){escaped}(?![\w#+])"
                 if re.search(pattern, target_text):
-                    # Proper display casing
                     display_name = cls._format_skill_casing(skill)
                     cat_matches.append(display_name)
                     if display_name not in extracted_skills:
@@ -177,35 +201,62 @@ class HeuristicResumeParser:
 
         return sorted(extracted_skills), categorized
 
-    @classmethod
-    def _format_skill_casing(cls, skill: str) -> str:
-        """Convert lowercase skill keys to canonical industry casing."""
-        casing_map = {
-            "python": "Python", "javascript": "JavaScript", "typescript": "TypeScript",
-            "go": "Go", "golang": "Go", "java": "Java", "c++": "C++", "c#": "C#",
-            "rust": "Rust", "ruby": "Ruby", "php": "PHP", "swift": "Swift", "kotlin": "Kotlin",
-            "sql": "SQL", "html": "HTML", "css": "CSS", "fastapi": "FastAPI",
-            "django": "Django", "flask": "Flask", "react": "React", "react.js": "React",
-            "next.js": "Next.js", "vue": "Vue.js", "vue.js": "Vue.js", "node.js": "Node.js",
-            "nodejs": "Node.js", "express": "Express.js", "spring": "Spring",
-            "spring boot": "Spring Boot", "docker": "Docker", "kubernetes": "Kubernetes",
-            "k8s": "Kubernetes", "aws": "AWS", "gcp": "GCP", "azure": "Azure",
-            "postgresql": "PostgreSQL", "postgres": "PostgreSQL", "mysql": "MySQL",
-            "mongodb": "MongoDB", "redis": "Redis", "elasticsearch": "Elasticsearch",
-            "graphql": "GraphQL", "git": "Git", "github": "GitHub", "rest api": "REST API"
+    @staticmethod
+    def _format_skill_casing(skill: str) -> str:
+        """Preserve standard casing for tech skills."""
+        custom_casing = {
+            "fastapi": "FastAPI",
+            "javascript": "JavaScript",
+            "typescript": "TypeScript",
+            "postgresql": "PostgreSQL",
+            "mongodb": "MongoDB",
+            "sqlite": "SQLite",
+            "graphql": "GraphQL",
+            "github": "GitHub",
+            "gitlab": "GitLab",
+            "next.js": "Next.js",
+            "vue.js": "Vue.js",
+            "react.js": "React.js",
+            "node.js": "Node.js",
+            "express.js": "Express.js",
+            "aws": "AWS",
+            "gcp": "GCP",
+            "rest api": "REST APIs",
+            "microservices": "Microservices",
+            "ci/cd": "CI/CD",
+            "tdd": "TDD",
+            "c++": "C++",
+            "c#": "C#",
+            "html": "HTML",
+            "css": "CSS",
+            "sql": "SQL",
+            "r": "R",
+            "langchain": "LangChain",
+            "llamaindex": "LlamaIndex",
+            "chromadb": "ChromaDB",
+            "duckdb": "DuckDB"
         }
-        return casing_map.get(skill, skill.title())
+        return custom_casing.get(skill.lower(), skill.title())
 
-    # --- Work Experience Extraction ---
+    # --- Experience Extraction with Adaptive Dates ---
 
     @classmethod
     def _extract_experience(cls, full_text: str, exp_section: str) -> Tuple[List[ExperienceItem], Optional[float]]:
-        """Parse employment history and calculate total experience."""
+        """Parse employment history supporting international month names, quarters, and dotted dates."""
         target_text = exp_section if exp_section else full_text
         lines = [line.strip() for line in target_text.split("\n") if line.strip()]
 
         experiences: List[ExperienceItem] = []
-        date_pattern = r"(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+)?\b(19\d{2}|20\d{2})\b\s*(?:-|–|—|to)\s*(?:(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+)?\b(19\d{2}|20\d{2})\b|Present|Current)"
+        # Multi-format date regex
+        date_pattern = (
+            r"(?:(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|"
+            r"Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?|"
+            r"Q[1-4]|\d{1,2})[\s,./-]+)?\b(19\d{2}|20\d{2})\b"
+            r"\s*(?:-|–|—|to|until|till)\s*"
+            r"(?:(?:(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|"
+            r"Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?|"
+            r"Q[1-4]|\d{1,2})[\s,./-]+)?\b(19\d{2}|20\d{2})\b|Present|Current|Now|Ongoing)"
+        )
 
         current_exp: Optional[Dict[str, Any]] = None
         years_found: List[int] = []
@@ -213,18 +264,23 @@ class HeuristicResumeParser:
         for line in lines:
             match = re.search(date_pattern, line, re.IGNORECASE)
             if match:
-                # Save previous experience item
                 if current_exp:
                     experiences.append(ExperienceItem(**current_exp))
 
-                start_yr = int(match.group(1))
-                end_str = match.group(2)
-                end_yr = int(end_str) if end_str else 2026
-                years_found.append(start_yr)
-                years_found.append(end_yr)
+                # Extract start and end year
+                all_years = [int(y) for y in re.findall(r"\b(19\d{2}|20\d{2})\b", match.group(0))]
+                start_yr = all_years[0] if all_years else 2020
+                end_yr = all_years[1] if len(all_years) > 1 else 2026
+                years_found.extend([start_yr, end_yr])
 
-                # Parse company and role from preceding or current line
+                end_str = "Present" if any(w in match.group(0).lower() for w in ["present", "current", "now", "ongoing"]) else str(end_yr)
+
+                # Parse company and role from header
                 header_part = line[:match.start()].strip(" |-–—,\t")
+                if not header_part:
+                    # Look at next part
+                    header_part = line[match.end():].strip(" |-–—,\t")
+
                 company = "Company"
                 role = "Professional Role"
 
@@ -236,6 +292,10 @@ class HeuristicResumeParser:
                     parts = header_part.split(" at ")
                     role = parts[0].strip()
                     company = parts[1].strip()
+                elif " - " in header_part:
+                    parts = header_part.split(" - ")
+                    role = parts[0].strip()
+                    company = parts[1].strip()
                 elif header_part:
                     role = header_part
 
@@ -243,15 +303,15 @@ class HeuristicResumeParser:
                     "company": company,
                     "role": role,
                     "start_date": str(start_yr),
-                    "end_date": end_str or "Present",
+                    "end_date": end_str,
                     "duration": f"{max(1, end_yr - start_yr)} years",
                     "highlights": [],
                     "technologies": []
                 }
             elif current_exp:
-                # Add highlights
-                if line.startswith(("-", "*", "•")):
-                    clean_highlight = line.lstrip("-*• \t")
+                # Capture bullet points
+                if line.startswith(("-", "*", "•", "–")):
+                    clean_highlight = line.lstrip("-*•– \t")
                     if clean_highlight:
                         current_exp["highlights"].append(clean_highlight)
 
@@ -276,7 +336,7 @@ class HeuristicResumeParser:
         lines = [line.strip() for line in target_text.split("\n") if line.strip()]
 
         education_items: List[EducationItem] = []
-        uni_keywords = ["university", "college", "institute", "school", "academy", "polytechnic"]
+        uni_keywords = ["university", "college", "institute", "school", "academy", "polytechnic", "universidad", "université"]
 
         for line in lines:
             lower = line.lower()
@@ -302,26 +362,22 @@ class HeuristicResumeParser:
                         else:
                             institution = p0
                             degree = p1
-                    elif parts:
-                        institution = parts[0]
                 elif " - " in line:
                     parts = [p.strip() for p in line.split(" - ") if p.strip()]
                     if len(parts) >= 2:
-                        p0, p1 = parts[0], parts[1]
-                        p0_uni = any(kw in p0.lower() for kw in uni_keywords)
-                        p1_uni = any(kw in p1.lower() for kw in uni_keywords)
-                        if p1_uni and not p0_uni:
-                            institution = p1
-                            degree = p0
-                        else:
-                            institution = p0
-                            degree = p1
-                    elif parts:
                         institution = parts[0]
+                        degree = parts[1]
+
+                for pat in cls.DEGREE_PATTERNS:
+                    match = re.search(pat, line, re.IGNORECASE)
+                    if match:
+                        degree = match.group(0).title()
+                        break
 
                 education_items.append(EducationItem(
                     institution=institution,
-                    degree=degree,
+                    degree=degree or "Degree / Certificate",
+                    field_of_study=None,
                     graduation_year=grad_year
                 ))
 
@@ -336,8 +392,8 @@ class HeuristicResumeParser:
         items = []
         for line in projects_section.split("\n"):
             line = line.strip()
-            if line and len(line) > 5 and not line.startswith(("-", "*")):
-                items.append(ProjectItem(name=line[:50], description=line))
+            if line and len(line) > 5 and not line.startswith(("-", "*", "•")):
+                items.append(ProjectItem(name=line[:50], description=line, technologies=[]))
         return items[:5]
 
     @classmethod
@@ -346,31 +402,28 @@ class HeuristicResumeParser:
             return []
         certs = []
         for line in cert_section.split("\n"):
-            line = line.strip(" -*•")
-            if line and len(line) > 3:
+            line = line.strip().lstrip("-*• \t")
+            if line and 4 <= len(line) <= 80:
                 certs.append(CertificationItem(name=line))
         return certs[:6]
 
     @classmethod
     def _extract_summary_fallback(cls, text: str) -> Optional[str]:
-        """Fallback summary from top paragraphs if no explicit section header exists."""
-        paragraphs = [p.strip() for p in text.split("\n\n") if len(p.strip().split()) > 15]
-        return paragraphs[0] if paragraphs else None
+        lines = [line.strip() for line in text.split("\n") if line.strip()]
+        for line in lines[1:6]:
+            if len(line.split()) >= 15 and not line.startswith(("-", "*", "•")):
+                return line
+        return None
 
     @classmethod
     def _infer_primary_domain(cls, skills: List[str]) -> str:
-        """Infer high-level domain from extracted skill frequencies."""
-        skills_lower = [s.lower() for s in skills]
-        backend_score = sum(1 for s in ["python", "go", "fastapi", "django", "sql", "postgresql", "docker"] if s in skills_lower)
-        frontend_score = sum(1 for s in ["javascript", "typescript", "react", "vue", "html", "css", "tailwind"] if s in skills_lower)
-        ml_score = sum(1 for s in ["pytorch", "tensorflow", "scikit-learn", "pandas", "numpy"] if s in skills_lower)
-        devops_score = sum(1 for s in ["kubernetes", "terraform", "aws", "gcp", "docker", "ci/cd"] if s in skills_lower)
-
-        scores = {
-            "Backend Engineering": backend_score,
-            "Frontend / Web": frontend_score,
-            "AI / Machine Learning": ml_score,
-            "DevOps / Cloud Platform": devops_score
-        }
-        top_domain = max(scores, key=scores.get)
-        return top_domain if scores[top_domain] > 0 else "Software Engineering"
+        s_lower = {s.lower() for s in skills}
+        if any(s in s_lower for s in ["fastapi", "django", "go", "golang", "postgresql", "microservices"]):
+            return "Backend Engineering"
+        elif any(s in s_lower for s in ["react", "next.js", "vue", "javascript", "typescript", "tailwind"]):
+            return "Frontend Engineering"
+        elif any(s in s_lower for s in ["pytorch", "tensorflow", "scikit-learn", "pandas", "langchain"]):
+            return "Machine Learning & AI"
+        elif any(s in s_lower for s in ["kubernetes", "docker", "terraform", "aws", "gcp"]):
+            return "DevOps & Cloud"
+        return "Software Engineering"

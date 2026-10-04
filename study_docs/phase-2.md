@@ -1,97 +1,104 @@
-# Phase 2: Candidate Entity Extraction Engine
+# Phase 2: Document Packet Boundary Splitting & Classification
 
 **Author:** saswa  
-**Status:** `🟢 Completed`  
-**Focus:** Transforming unstructured resume text into a strongly typed `CandidateProfile` using offline heuristics + optional LLM adapters.
+**Status:** `🟢 Completed & Upgraded`  
+**Layer in System:** **Layer 2: Document Segmentation & Packet Splitting**  
+**Core Files:** [`src/parser/splitter.py`](file:///c:/Users/saswa/Desktop/parse%20ATS/src/parser/splitter.py), [`src/core/config.py`](file:///c:/Users/saswa/Desktop/parse%20ATS/src/core/config.py)
 
 ---
 
 ## 💡 Layman's Analogy (Explain Like I'm 5)
 
-Imagine you are looking at a printout of a resume. Your eyes automatically jump around:
-- You look at the very top for the candidate's **Name**, **Email**, and **Phone Number**.
-- You look for their **Skills** section to see what tools they know.
-- You look at their **Work Experience** to see where they worked and for how many years.
-- You check their **College / Degree**.
+Imagine an applicant sends you an envelope. Inside the envelope is not just a resume: they also included a **1-page Cover Letter**, a **2-page Resume**, and a **3-page University Transcript** with semester grades.
 
-Now imagine you have to do this for 1,000 resumes an hour without getting tired.
+If you blindly throw all 6 pages into an ATS parser, the parser gets confused:
+- It mistakes the university registrar's name on the transcript for the candidate's boss!
+- It mistakes the cover letter pitch for work experience!
+- It counts courses on the transcript as years of job tenure!
 
-**Phase 2 is your Expert Sifting Engine:**
-- It has an **Offline Detective Brain (Heuristics)**: Even if your internet is completely disconnected and you have no AI keys, it knows exact patterns (like what an email looks like, what an Indian or US phone number looks like, and has an exhaustive encyclopedia of 200+ tech skills from Python to Kubernetes). It extracts all details in less than 5 milliseconds!
-- It has an **AI Brain (LLM Adapter)**: If you provide an API key (like Gemini or OpenRouter), it can also read nuanced paragraphs, summarize achievements, and extract non-standard resume formats with AI. If the AI ever goes down or runs out of credits, it automatically falls back to the Offline Detective so your application never crashes.
+Or worse: a recruiting agency dumps a single 30-page PDF containing **10 different candidates** scanned together!
+
+**Phase 2 is your Expert Packet Inspector:**
+1. It looks through the pages of the packet.
+2. It detects where the **Cover Letter** ends and where the **Resume** begins.
+3. It detects where the **Transcripts** start and isolates them.
+4. It cuts the document cleanly into labeled segments and extracts **strictly the actual resume** to pass downstream, discarding irrelevant attachments.
+5. If someone mistakenly uploads an invoice or an office memo, it acts as a **Gatekeeper** and flags it before wasting time or money!
 
 ---
 
-## 🛠️ Technical Architecture & Engineering Deep Dive
+## 🎓 Computer Science Concepts Used
 
-Phase 2 takes the `NormalizedDocument` from Phase 1 and converts it into a valid `CandidateProfile` Pydantic model.
+### 1. "System One" Decision Models vs. Generative LLMs (DocJev Architecture)
+For tasks like document boundary detection and classification, using a massive general-purpose LLM (like GPT-4o or Claude 3.5 Sonnet) is:
+- **Excessively slow** ($5\text{s} - 15\text{s}$ per document).
+- **Expensive** (charging for thousands of generated output tokens).
+- **Prone to drift** (unpredictable free-form markdown).
+
+[`src/parser/splitter.py`](file:///c:/Users/saswa/Desktop/parse%20ATS/src/parser/splitter.py) incorporates the **DocJev philosophy** (created by Jerry Liu, cofounder of LlamaIndex) using **Jev** from **TypeSafe** (`api.typesafe.ai/v1/systemone`):
+- Instead of open-ended text generation, a "System One" decision model evaluates structured category rules against document page previews in parallel.
+- Execution latency drops to a fraction of traditional LLMs ($\sim 6\times$ faster).
+
+### 2. Contiguous Interval Partitioning & State Transition Logic
+When evaluating multi-page documents, each page $p \in \{1, \dots, N\}$ is assigned a category label $c_p \in \{\text{resume}, \text{cover\_letter}, \text{transcripts}, \dots\}$.
+- Phase 2 applies a state-machine compression algorithm over page intervals:
+  $$\text{Segment}_k = \left(c_k, \text{start\_page}, \text{end\_page}\right)$$
+- Contiguous sequences of pages sharing the same predicted category are merged into coherent sub-document blocks.
+- The primary resume block is isolated, while auxiliary materials are tagged and cataloged.
+
+### 3. Dual-Engine Resilience: Cloud Decision Model with Local Fallback
+In accordance with our zero-key resilience principle:
+- If a `TYPESAFE_API_KEY` is present in `.env`, the system calls TypeSafe's Jev model for high-confidence boundary splitting.
+- If offline or if no key is configured, [`DocumentSplitter`](file:///c:/Users/saswa/Desktop/parse%20ATS/src/parser/splitter.py#L125) executes a deterministic rule-based boundary detector that analyzes salutations (*"Dear Hiring Manager"*, *"Sincerely"*), registrar seals (*"Cumulative GPA"*, *"Official Transcript"*), and resume hallmarks.
+
+---
+
+## 📂 File-by-File Breakdown: `src/parser/splitter.py`
+
+| Function / Component | Input | Output | What It Does & Edge-Case Handled |
+| :--- | :--- | :--- | :--- |
+| `DocumentSegment` (Dataclass) | Category, page bounds, text | Data container | Models an individual classified slice of a packet (e.g. `category="cover_letter"`, `start_page=1`, `end_page=1`). |
+| `PacketSplitResult` (Dataclass) | Segment list, flags | Data container | Bundles `is_packet: bool`, `primary_category`, `primary_resume_text`, and `engine`. |
+| `DocumentSplitter.process(doc)` | `LoadedDocument` | `PacketSplitResult` | **The Main Coordinator**: Bypasses splitting for single-page files; calls TypeSafe API if key configured; falls back to local heuristic boundary splitting. |
+| `_split_with_typesafe(doc)` | `LoadedDocument` | `Optional[PacketSplitResult]` | Previews the first 800 characters of each page and invokes TypeSafe's Jev decision API to calculate page cut boundaries. |
+| `_split_heuristically(doc)` | `LoadedDocument` | `PacketSplitResult` | Offline fallback. Evaluates per-page lexical signatures and merges contiguous category intervals without network calls. |
+| `_classify_single_page(text)` | Page text string | `str` | Classifies individual page content into `resume`, `cover_letter`, `transcripts`, `job_description`, or `other`. |
+
+---
+
+## 🏗️ Architecture Flow Diagram
 
 ```mermaid
-graph TD
-    A[NormalizedDocument from Phase 1] --> B{CandidateExtractor}
-    B -->|force_heuristic=True OR No API Key| C[HeuristicResumeParser]
-    B -->|API Key Present & force_heuristic=False| D[LLMClient via httpx]
+flowchart TD
+    Doc[LoadedDocument from Phase 1] --> CheckPages{Page Count > 1?}
     
-    C --> E[Regex Token & Pattern Extractors]
-    C --> F[Skills Taxonomy Matcher]
-    C --> G[Date Range & Duration Calculator]
+    CheckPages -- No (Single Page) --> Direct[Direct Single Page Classifier]
+    Direct --> Result[PacketSplitResult: Isolate Resume Text]
     
-    D -->|Success| H[Pydantic JSON Validation]
-    D -->|Failure / Network Error| C
+    CheckPages -- Yes (Multi-Page Packet) --> CheckKey{TypeSafe API Key Present?}
     
-    E --> I[Standardized CandidateProfile]
-    F --> I
-    G --> I
-    H --> I
+    CheckKey -- Yes --> JevAPI[Call TypeSafe Jev Decision API]
+    JevAPI -->|Success| Cuts[Parse Page Cuts & Categories]
+    Cuts --> Stitch[Stitch Pages into Sub-Document Segments]
+    
+    JevAPI -- Network Failure / Timeout --> HeuristicSplit[Local Heuristic Boundary Splitter]
+    CheckKey -- No (Offline Mode) --> HeuristicSplit
+    
+    HeuristicSplit --> Lexical[Evaluate Lexical Cues: Salutations, Registrars, Headers]
+    Lexical --> Intervals[Merge Contiguous Intervals: [1-1]=Cover Letter, [2-3]=Resume]
+    Intervals --> Stitch
+    
+    Stitch --> Filter[Filter out Non-Resume Segments]
+    Filter --> Result
 ```
 
 ---
 
-## 📄 File Breakdown & Responsibilities
+## 🚀 Skill-Up Takeaways for Your Career
 
-### 1. `src/engine/heuristics.py`
-- **Layman summary**: The offline rulebook that detects emails, phone numbers, tech skills, and dates without needing AI or internet.
-- **Technical specifications**:
-  - **Deterministic Contact Extraction**:
-    - Email: `\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b`.
-    - Phone: Matches 10-14 digit international E.164 formats as well as US formatted numbers `(123) 456-7890`.
-    - Social links: Extracts `linkedin.com/in/*` and `github.com/*`.
-  - **Curated Skills Taxonomy**: Categorizes skills into:
-    - *Languages* (Python, TypeScript, Go, Rust, Java, etc.)
-    - *Frameworks* (FastAPI, React, Django, Vue, Spring, etc.)
-    - *Databases* (PostgreSQL, MongoDB, Redis, Snowflake, etc.)
-    - *Cloud & DevOps* (Docker, Kubernetes, AWS, Terraform, CI/CD, etc.)
-    - *Tools & Practices* (Git, Kafka, REST APIs, Microservices, TDD)
-  - **Case-Insensitive Word Boundary Matching**: Employs negative lookbehind/lookahead `(?<![\w#+])skill(?![\w#+])` to prevent false positive substrings (e.g. preventing `c` from falsely matching `cat`).
-  - **Chronological Experience Parser**: Extracts employment periods (`YYYY - YYYY` or `Month YYYY - Present`), parses role and company titles, and calculates total professional career tenure.
-  - **Academic Degree Recognizer**: Detects degrees (`B.S.`, `M.S.`, `B.Tech`, `Ph.D.`, `MBA`) and university institution names.
-
-### 2. `src/core/llm.py`
-- **Layman summary**: The lightweight AI communicator that speaks to OpenRouter, Google Gemini, or OpenAI when an API key is available.
-- **Technical specifications**:
-  - Direct HTTP communication using `httpx` (no bloated langchain dependency chains).
-  - Enforces JSON schema response formats (`response_format: {"type": "json_object"}`).
-  - Centralized error handling returning `None` instead of raising uncaught server exceptions.
-
-### 3. `src/engine/extractor.py`
-- **Layman summary**: The coordinator that chooses between the offline rules and the AI based on whether an API key exists.
-- **Technical specifications**:
-  - Coordinates fallback priority: `LLM -> Heuristic`.
-  - Handles Pydantic validation into `CandidateProfile`.
-
----
-
-## 🧪 Verification & How to Test This Phase
-
-Run the Phase 2 test suite:
-
-```bash
-python -m pytest tests/test_extractor.py -v
-```
-
-**Test Coverage Criteria:**
-- Verifies full entity extraction from a realistic software engineer resume.
-- Verifies candidate name, email, phone, GitHub, and LinkedIn detection.
-- Verifies extraction of categorized skills (Python, FastAPI, Docker).
-- Verifies parsing of work experience records and education credentials.
-- Verifies safe handling of empty or blank resumes without runtime errors.
+1. **Don't use a sledgehammer for a nail (Decision Models vs Generative Models)**:
+   When you only need a classification or a boundary cut, general-purpose LLMs waste massive compute generating tokens you don't need. Decision models (like Jev) return typed predictions with deterministic speed.
+2. **Never assume single-document purity in enterprise ingestion**:
+   Real-world enterprise users never upload "clean" single resumes. They upload email threads, agency packs, and scanned portfolios. A robust ingestion pipeline must always segment packets before running entity extraction.
+3. **Always build a zero-dependency offline fallback**:
+   Cloud APIs experience latency spikes and service outages. Providing an offline regex/heuristic classifier ensures your application continues processing resumes even in an airplane or isolated intranet environment.

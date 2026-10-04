@@ -1,13 +1,14 @@
-"""Resume parsing and ATS evaluation endpoints."""
+"""Resume parsing, packet splitting, and ATS evaluation endpoints."""
 
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status
 from pydantic import BaseModel
 
 from src.core.config import settings
 from src.parser.loader import DocumentLoader
+from src.parser.splitter import DocumentSplitter, PacketSplitResult
 from src.parser.normalizer import TextNormalizer
 from src.engine.extractor import CandidateExtractor
 from src.engine.matcher import ATSMatcher
@@ -20,6 +21,23 @@ router = APIRouter()
 class ScoreRequest(BaseModel):
     profile: CandidateProfile
     job_description: str
+
+
+class SegmentResponse(BaseModel):
+    category: str
+    start_page: int
+    end_page: int
+    confidence: float
+    text_preview: str
+
+
+class PacketSplitResponse(BaseModel):
+    filename: str
+    page_count: int
+    is_packet: bool
+    primary_category: str
+    engine: str
+    segments: List[SegmentResponse]
 
 
 def _validate_file(file: UploadFile) -> str:
@@ -39,12 +57,55 @@ def _validate_file(file: UploadFile) -> str:
     return suffix
 
 
+@router.post("/split", response_model=PacketSplitResponse, tags=["packet"])
+async def split_packet(file: UploadFile = File(...)):
+    """Upload a document packet to detect boundaries and classify sub-documents (DocJev & Heuristic)."""
+    _validate_file(file)
+    try:
+        content = await file.read()
+        if len(content) > settings.max_file_size_bytes:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"File exceeds maximum allowed size of {settings.max_file_size_bytes / (1024*1024):.0f}MB."
+            )
+
+        doc = DocumentLoader.load_bytes(content, filename=file.filename)
+        split_result = DocumentSplitter.process(doc)
+
+        segment_responses = [
+            SegmentResponse(
+                category=s.category,
+                start_page=s.start_page,
+                end_page=s.end_page,
+                confidence=s.confidence,
+                text_preview=s.text[:200] + ("..." if len(s.text) > 200 else "")
+            )
+            for s in split_result.segments
+        ]
+
+        return PacketSplitResponse(
+            filename=file.filename,
+            page_count=doc.page_count,
+            is_packet=split_result.is_packet,
+            primary_category=split_result.primary_category,
+            engine=split_result.engine,
+            segments=segment_responses
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Error analyzing document packet: {str(e)}"
+        )
+
+
 @router.post("/parse", response_model=CandidateProfile, tags=["parser"])
 async def parse_resume(
     file: UploadFile = File(...),
     force_heuristic: bool = Form(False)
 ):
-    """Upload a resume file (PDF, DOCX, TXT) and return structured candidate profile."""
+    """Upload a resume or application packet; automatically isolates resume, normalizes, and extracts candidate profile."""
     _validate_file(file)
 
     try:
@@ -55,8 +116,17 @@ async def parse_resume(
                 detail=f"File exceeds maximum allowed size of {settings.max_file_size_bytes / (1024*1024):.0f}MB."
             )
 
+        # Layer 1: Spatial Ingestion
         doc = DocumentLoader.load_bytes(content, filename=file.filename)
-        normalized = TextNormalizer.normalize(doc.raw_text)
+
+        # Layer 2: Packet Boundary Splitting & Document Classification
+        split_result = DocumentSplitter.process(doc)
+        resume_text = split_result.primary_resume_text
+
+        # Layer 3: Fuzzy & Typographic Section Normalization
+        normalized = TextNormalizer.normalize(resume_text)
+
+        # Layer 4: Neuro-Symbolic Hybrid Extraction
         extractor = CandidateExtractor(force_heuristic=force_heuristic)
         profile = extractor.extract(normalized)
         return profile
@@ -89,7 +159,7 @@ async def analyze_resume_and_match(
     job_description: Optional[str] = Form(None),
     force_heuristic: bool = Form(False)
 ):
-    """Single-call endpoint: parse resume file and evaluate against target job description."""
+    """End-to-end 4-layer pipeline: spatial load -> packet split -> fuzzy normalize -> hybrid extract -> rubric match."""
     _validate_file(file)
     start_time = time.time()
 
@@ -101,11 +171,21 @@ async def analyze_resume_and_match(
                 detail=f"File exceeds maximum allowed size of {settings.max_file_size_bytes / (1024*1024):.0f}MB."
             )
 
+        # Layer 1: Spatial layout-aware ingestion
         doc = DocumentLoader.load_bytes(content, filename=file.filename)
-        normalized = TextNormalizer.normalize(doc.raw_text)
+
+        # Layer 2: Packet splitting & classification
+        split_result = DocumentSplitter.process(doc)
+        resume_text = split_result.primary_resume_text
+
+        # Layer 3: Fuzzy section normalizer
+        normalized = TextNormalizer.normalize(resume_text)
+
+        # Layer 4: Hybrid extraction
         extractor = CandidateExtractor(force_heuristic=force_heuristic)
         profile = extractor.extract(normalized)
 
+        # Rubric Matcher
         matcher = ATSMatcher()
         score_report = matcher.evaluate(profile, job_description or "")
 

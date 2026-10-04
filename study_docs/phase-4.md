@@ -1,93 +1,116 @@
-# Phase 4: REST API Endpoints & Anti-AI Slop Workstation UI
+# Phase 4: Neuro-Symbolic Hybrid Extraction, Rubric Matching & Workstation UI
 
 **Author:** saswa  
-**Status:** `🟢 Completed`  
-**Focus:** FastAPI service architecture, multipart file streaming, system diagnostics, and the embedded dark-mode technical workstation interface.
+**Status:** `🟢 Completed & Upgraded`  
+**Layer in System:** **Layer 4: Hybrid Extraction & Reconciliation Engine + REST Workstation**  
+**Core Files:** [`src/engine/extractor.py`](file:///c:/Users/saswa/Desktop/parse%20ATS/src/engine/extractor.py), [`src/engine/matcher.py`](file:///c:/Users/saswa/Desktop/parse%20ATS/src/engine/matcher.py), [`src/api/routes/parser.py`](file:///c:/Users/saswa/Desktop/parse%20ATS/src/api/routes/parser.py), [`src/static/`](file:///c:/Users/saswa/Desktop/parse%20ATS/src/static/)
 
 ---
 
 ## 💡 Layman's Analogy (Explain Like I'm 5)
 
-Imagine you built a state-of-the-art engine inside a workshop. The engine runs smoothly, but right now nobody can use it unless they open the hood and manually attach wires.
+Imagine you are solving a complex criminal investigation:
+- On one side, you have a **Forensic Scientist**: They don't speculate. They check fingerprints, exact phone numbers, and physical evidence. If an email address isn't physically printed on the paper, they will never make one up.
+- On the other side, you have a **Seasoned Detective**: They understand human psychology, read between the lines, and can connect the dots in a messy story (e.g. recognizing that someone who *"built high-throughput distributed pipelines on AWS"* is an experienced cloud architect, even if they forgot to write the word *"Cloud"* in their skills list).
 
-To turn this into a product you can actually test and show to anyone:
-1. You build a **Drive-Through Counter (The REST API)**: Any computer or mobile app can send a resume file to your counter, and in a fraction of a second, your counter hands back a clean, organized JSON receipt containing the candidate's skills, experience, and job match score.
-2. You build a **Cockpit Dashboard (The Workstation UI)**: Instead of generic, bloated software filled with purple gradient buzzwords, you have a high-density, dark-mode technical control screen. You can drag and drop a resume, pick sample job descriptions with one click, run evaluations using `Ctrl+Enter`, switch between tabs (work history, categorized skills, education), and copy formatted JSON with one click.
+If you only use the scientist, you miss the rich human story.  
+If you only use the detective, they might occasionally hallucinate or misremember a phone number.
+
+**Phase 4 is the Neuro-Symbolic Super-Team:**
+1. It runs the **Forensic Scientist (Deterministic Heuristics)** to lock down verified facts: real email addresses, exact international phone numbers, verified social links, and taxonomy keywords.
+2. It runs the **Seasoned Detective (LLM Semantic Reasoning)** to extract messy narrative job histories, understand project achievements, and uncover implicit skills.
+3. It runs a **Reconciliation Judge**: It fuses both outputs together! If the AI hallucinated an email not on the page, the judge throws it out and restores the real one. If the AI discovered an unlisted skill from a project paragraph, the judge merges it in.
+4. It compares the candidate to your Job Description using a **4-Tier Mathematical Rubric**, and presents the results on a **high-density, dark-mode workstation dashboard**.
 
 ---
 
-## 🛠️ Technical Architecture & Client-Server Mechanics
+## 🎓 Computer Science Concepts Used
 
-Phase 4 exposes the core parser and matcher through asynchronous FastAPI routes and serves an embedded client app directly from memory.
+### 1. Neuro-Symbolic AI Fusion (Reconciliation Architecture)
+Pure statistical AI (LLMs) suffers from hallucinations and nondeterminism. Pure symbolic AI (regex, rule engines) is brittle and fails on novel narrative formats.
+- **Neuro-Symbolic Fusion** merges the precision of symbolic rules with the cognitive generalization of neural networks:
+  $$\text{Profile}_{\text{Final}} = \text{Reconcile}\left(\text{Profile}_{\text{Symbolic (Heuristic)}}, \text{Profile}_{\text{Neural (LLM)}}\right)$$
+- In [`src/engine/extractor.py`](file:///c:/Users/saswa/Desktop/parse%20ATS/src/engine/extractor.py#L104-L188):
+  - **Ground-Truth Contact Verification**: If the LLM produces an email string $E$, the reconciler checks if $E \in \text{clean\_text}$. If not, it falls back to the regex-verified email, mathematically preventing contact hallucinations.
+  - **Skill Set Union**: Computes the union $\mathcal{S}_{\text{LLM}} \cup \mathcal{S}_{\text{Heuristic}}$, preserving proper title casing (e.g. "FastAPI", "PostgreSQL") while deduplicating case-insensitively.
+  - **Narrative Enrichment**: Takes the LLM's parsed bullet points, company titles, and timeline summaries, but fills missing tenures using heuristic date math.
+
+### 2. 4-Tier Rubric-Based ATS Scoring Algorithm
+Rather than asking an LLM for an arbitrary "1 to 10" rating (which drifts wildly between runs), [`src/engine/matcher.py`](file:///c:/Users/saswa/Desktop/parse%20ATS/src/engine/matcher.py) computes a mathematically deterministic ATS score:
+
+$$\text{Overall ATS Score} = \sum_{i \in \{\text{tech}, \text{exp}, \text{edu}, \text{qual}\}} (w_i \cdot S_i)$$
+
+| Category | Weight ($w_i$) | Algorithmic Evaluation |
+| :--- | :---: | :--- |
+| **Technical Skills** | **40%** | Jaccard & taxonomy overlap between required job skills and candidate skill profile. |
+| **Experience & Role Relevance** | **35%** | Candidate tenure vs. required minimum years + semantic domain title alignment. |
+| **Academic Credentials** | **15%** | Degree tier validation (Doctorate > Master's > Bachelor's > Associate). |
+| **Presentation & Quality** | **10%** | Contact completeness (email, phone, LinkedIn/GitHub) + quantifiable bullet metrics. |
+
+### 3. Asynchronous Streaming Architecture (Zero-Disk I/O)
+- Uses FastAPI with `async/await` to handle streaming multipart file uploads directly in RAM via `io.BytesIO`.
+- Enforces strict security boundaries:
+  - 15 MB file size limit (`HTTP_413_REQUEST_ENTITY_TOO_LARGE`).
+  - Strict extension whitelisting (`HTTP_415_UNSUPPORTED_MEDIA_TYPE`).
+
+---
+
+## 📂 File-by-File Breakdown
+
+### 1. `src/engine/extractor.py`
+| Function / Component | Input | Output | What It Does & Edge-Case Handled |
+| :--- | :--- | :--- | :--- |
+| `CandidateExtractor.extract(doc)` | `NormalizedDocument` | `CandidateProfile` | **The Hybrid Coordinator**: Runs heuristic ground-truth pass; runs LLM pass if API key is configured; invokes `_reconcile` to merge both. |
+| `_extract_with_llm(doc)` | `NormalizedDocument` | `Optional[CandidateProfile]` | Sends structured Pydantic schema prompt to configured provider (Gemini, OpenRouter, OpenAI) with strict temperature ($0.1$). |
+| `_reconcile(heuristic, llm, doc)` | Heuristic profile, LLM profile, Doc | `CandidateProfile` | **The Reconciliation Judge**: Verifies emails/phones against raw text; merges skill taxonomies; prevents hallucination; marks `extraction_mode="hybrid"`. |
+
+### 2. `src/engine/matcher.py`
+| Function / Component | Input | Output | What It Does & Edge-Case Handled |
+| :--- | :--- | :--- | :--- |
+| `ATSMatcher.evaluate(profile, jd)` | CandidateProfile, Job Description | `ATSScoreReport` | Calculates the 4-tier rubric weights; synthesizes Key Strengths, Critical Gaps, and Recruiter Recommendation. |
+
+### 3. `src/api/routes/parser.py`
+| Endpoint | Method | Payload | Description |
+| :--- | :---: | :--- | :--- |
+| `/api/v1/split` | `POST` | `multipart/form-data` | Uploads bundled application packets; returns classified sub-document segments and page cuts (DocJev & Heuristic). |
+| `/api/v1/parse` | `POST` | `multipart/form-data` | Ingests document or packet; splits and isolates resume; normalizes; extracts candidate profile. |
+| `/api/v1/score` | `POST` | `application/json` | Evaluates an already parsed `CandidateProfile` against a target job description. |
+| `/api/v1/analyze` | `POST` | `multipart/form-data` | **The Full 4-Layer Pipeline**: Ingestion $\rightarrow$ Split $\rightarrow$ Normalize $\rightarrow$ Hybrid Extract $\rightarrow$ Rubric Match. |
+| `/api/v1/health` | `GET` | Empty | Returns diagnostics, active engine mode (`heuristic`, `llm`, or `hybrid`), and status of all 4 layers. |
+
+---
+
+## 🏗️ End-to-End System Pipeline Flow
 
 ```mermaid
-sequenceDiagram
-    participant Browser as Workstation UI (Browser)
-    participant FastAPI as FastAPI Router (src/main.py)
-    participant ParserRoute as /api/v1/analyze
-    participant Pipeline as Parser & Matcher Engine
-
-    Browser->>FastAPI: GET /
-    FastAPI-->>Browser: index.html + styles.css + app.js
+flowchart TD
+    File[Uploaded File / Packet] --> L1[Layer 1: Spatial Ingestion - PyMuPDF Block Ordering]
+    L1 --> L2[Layer 2: Packet Splitting - DocJev / Jev Boundary Isolation]
+    L2 --> L3[Layer 3: Fuzzy Normalizer - 80+ Aliases & NFC Unicode]
     
-    Browser->>FastAPI: GET /api/v1/health
-    FastAPI-->>Browser: {status: "healthy", engine_mode: "heuristic"}
+    L3 --> Pass1[Pass 1: Deterministic Heuristics Ground Truth]
+    L3 --> Pass2{LLM API Key Configured?}
     
-    Browser->>ParserRoute: POST /api/v1/analyze (multipart/form-data)
-    Note over ParserRoute: Validates file extension (.pdf, .docx, .txt)<br/>Checks size boundary <= 15MB
-    ParserRoute->>Pipeline: DocumentLoader -> TextNormalizer -> CandidateExtractor -> ATSMatcher
-    Pipeline-->>ParserRoute: CandidateProfile + ATSScoreReport
-    ParserRoute-->>Browser: JSON CandidateEvaluationResponse
-    Note over Browser: Updates score gauge, strengths,<br/>critical gaps, and timeline tabs
+    Pass2 -- Yes --> CallLLM[Pass 2: LLM Deep Semantic Inference]
+    CallLLM --> Reconcile[Layer 4: Neuro-Symbolic Reconciliation Judge]
+    Pass1 --> Reconcile
+    
+    Pass2 -- No (Offline) --> Profile[Final CandidateProfile: extraction_mode=heuristic]
+    Reconcile --> ProfileHybrid[Final CandidateProfile: extraction_mode=hybrid]
+    
+    Profile --> Matcher[ATSMatcher: 4-Tier Rubric Evaluation]
+    ProfileHybrid --> Matcher
+    
+    Matcher --> UI[Anti-AI Slop Workstation Dashboard & REST API]
 ```
 
 ---
 
-## 📄 File Breakdown & Responsibilities
+## 🚀 Skill-Up Takeaways for Your Career
 
-### 1. `src/main.py`
-- **Layman summary**: The front door that starts up the server and hooks everything together.
-- **Technical specifications**:
-  - Initializes FastAPI application with automatic OpenAPI `/docs` and `/redoc` documentation.
-  - Implements CORS middleware allowing local browser development (`allow_origins=["*"]`).
-  - Registers execution latency middleware measuring wall-clock duration and appending `X-Process-Time` HTTP headers.
-  - Mounts static directory at `/static` and binds root path `/` to return `src/static/index.html`.
-
-### 2. `src/api/routes/parser.py`
-- **Layman summary**: The API endpoints that accept uploaded files and return structured results.
-- **Technical specifications**:
-  - `POST /api/v1/parse`: Ingests resume file; extracts `CandidateProfile`.
-  - `POST /api/v1/score`: Accepts JSON payload containing pre-parsed `CandidateProfile` and `job_description`; returns `ATSScoreReport`.
-  - `POST /api/v1/analyze`: Combined one-shot endpoint accepting multipart resume file upload and optional job description form parameter; runs full pipeline and returns `CandidateEvaluationResponse`.
-  - Input validation: Rejects unsupported file extensions with HTTP 415 and files exceeding 15MB with HTTP 413.
-
-### 3. `src/api/routes/health.py`
-- **Layman summary**: The status light that tells you if the system is running and which engine mode is active.
-- **Technical specifications**:
-  - `GET /api/v1/health`: Returns active engine mode (`heuristic` vs `llm`), author (`saswa`), and supported file types.
-
-### 4. `src/static/index.html`, `styles.css`, `app.js`
-- **Layman summary**: The interactive workstation where you drag-and-drop resumes, test different jobs, and inspect the scores and profile.
-- **Technical specifications**:
-  - **Zero Build Toolchain**: Plain HTML5, Modern Vanilla CSS, and ES6 JavaScript. No `npm`, `node_modules`, or complex build bundlers required.
-  - **Anti-AI Slop Aesthetic**: High data-density dark theme using a slate/zinc color palette (`#080c14`, `#131b2e`), crisp 1px borders, and monospace JetBrains typography for data metrics.
-  - **Interactive Presets**: Quick-load buttons for *Backend Lead*, *Frontend Eng*, and *ML Specialist*.
-  - **Dynamic Tab Switching**: Smooth client-side tab panes for *Work Experience Timeline*, *Categorized Skills*, *Education History*, and *Raw JSON Viewer*.
-  - **Telemetry**: Displays real-time API response time in milliseconds and engine mode used.
-
----
-
-## 🧪 Verification & How to Test This Phase
-
-Run the Phase 4 test suite:
-
-```bash
-python -m pytest tests/test_api.py -v
-```
-
-**Test Coverage Criteria:**
-- Verifies `GET /api/v1/health` returns HTTP 200 with `status: healthy` and author credit `saswa`.
-- Verifies `POST /api/v1/parse` parses text resume and returns extracted profile.
-- Verifies `POST /api/v1/analyze` computes overall match score and matches technical skills against target JD.
-- Verifies unsupported file extensions (`.exe`) are rejected with HTTP 415.
-- Verifies root endpoint `GET /` serves HTML workstation webpage.
+1. **Neuro-Symbolic architecture beats pure LLMs every time**:
+   Never trust an LLM with critical deterministic identifiers (emails, phone numbers, legal IDs, credit cards). Always use deterministic regex to anchor ground-truth facts, and use LLMs for semantic narrative understanding.
+2. **Explainable AI (XAI) over black-box scores**:
+   Hiring platforms and ATS systems face strict regulatory scrutiny (e.g. EEOC and EU AI Act). A deterministic, weighted rubric (Skills 40%, Experience 35%, Education 15%, Quality 10%) with explicit gap breakdowns is fully audit-compliant, whereas an LLM saying *"I give this candidate a 7/10"* is indefensible.
+3. **Build zero-npm embedded dashboards**:
+   You do not need a 400MB `node_modules` folder, Webpack, or Next.js just to build an internal test bench. A single `index.html` + `styles.css` + `app.js` bundle served directly from FastAPI starts in milliseconds, uses 0MB of build memory, and never breaks due to npm dependency deprecations.

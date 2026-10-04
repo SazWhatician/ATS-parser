@@ -1,97 +1,109 @@
-# Phase 1: Core Document Ingestion & Text Normalizer
+# Phase 1: Spatial & Layout-Aware Document Ingestion
 
 **Author:** saswa  
-**Status:** `🟢 Completed`  
-**Focus:** File decoding, multi-engine PDF/Word/Text loading, text sanitization, and section segmentation.
+**Status:** `🟢 Completed & Upgraded`  
+**Layer in System:** **Layer 1: Spatial & Layout Ingestion**  
+**Core Files:** [`src/parser/loader.py`](file:///c:/Users/saswa/Desktop/parse%20ATS/src/parser/loader.py)
 
 ---
 
 ## 💡 Layman's Analogy (Explain Like I'm 5)
 
-Imagine you run a busy hiring office. Job applicants hand you resumes in all shapes and sizes: some are glossy PDF brochures with fancy dual-column designs, some are Microsoft Word files, and others are simple notepad text files.
+Imagine you open a newspaper or magazine. A modern newspaper doesn't write articles in one giant block stretching from the far left of the page to the far right. Instead, it has **two or three columns** side-by-side.
 
-If you handed those straight to an executive or an AI without prepping them, they'd get confused by strange formatting, weird font symbols (like bullet circles that turn into gibberish boxes), or words crammed together across multiple columns.
+A human naturally reads the **left column top-to-bottom first**, and only then jumps over to the **right column**.
 
-**Phase 1 is your smart, ultra-fast Digital Mailroom Clerk:**
-1. It takes any document (`.pdf`, `.docx`, or `.txt`).
-2. It irons out all the wrinkles: it fixes non-standard spaces, converts odd bullet symbols into clean dashes, and removes empty space.
-3. It uses a highlighter to organize the resume into labeled folders: **Summary**, **Experience**, **Education**, **Skills**, **Projects**, and **Certifications**.
+A naive computer program, however, reads PDFs like a laser scanner across the paper line-by-line horizontally:
+```text
+Left Column (Skills)             Right Column (Experience)
+[Python, SQL]                    [Senior Engineer at Google]
+[Docker, AWS]                    [Led team of 5 backend engineers]
+```
+The naive parser reads:  
+> *"Python, SQL Senior Engineer at Google Docker, AWS Led team of 5 backend engineers"*
 
-When Phase 1 finishes its job, what comes out is clean, organized, predictable text that anyone can read.
+It turns the resume into complete **word salad**! 
+
+**Phase 1 is your Spatial Layout Architect:**
+1. It looks at the page in 2D space like human eyes do.
+2. It detects if there is a sidebar on the left and a body on the right.
+3. It reads the full left sidebar first, then the full right body, keeping work experience completely separate from skills.
+4. If someone uploads a photocopied or scanned image without any real text, it immediately flags it as a scanned document instead of failing silently.
 
 ---
 
-## 🛠️ Technical Architecture & Engineering Deep Dive
+## 🎓 Computer Science Concepts Used
 
-Phase 1 provides two decoupled, resilient modules:
-1. `DocumentLoader` (`src/parser/loader.py`): Multi-strategy file ingestion engine.
-2. `TextNormalizer` (`src/parser/normalizer.py`): Deterministic text sanitizer and structural section segmenter.
+### 1. 2D Bounding-Box Spatial Clustered Partitioning
+In PDF documents, characters don't have natural "newlines" or "paragraphs"—they are glyphs placed at floating-point Cartesian coordinates $(x_0, y_0, x_1, y_1)$ on a page canvas. 
+- In [`src/parser/loader.py`](file:///c:/Users/saswa/Desktop/parse%20ATS/src/parser/loader.py), we utilize PyMuPDF (`fitz`) block geometry.
+- We partition blocks into horizontal coordinate bands:
+  - **Span Blocks** ($x_0 < 0.25W \land x_1 > 0.65W$): Full-width headers (candidate name, banner titles).
+  - **Left Column Blocks** ($x_1 \le 0.48W$): Sidebars containing skills, contact chips, or languages.
+  - **Right Column Blocks** ($x_0 \ge 0.35W$): Main body containing work history, bullet points, and education.
+- Each partition is sorted topologically top-down by vertical coordinate $y_0$. This guarantees that 2-column Canva and LaTeX resumes are reassembled in true reading order.
+
+### 2. Multi-Engine Fallback Pattern (Resilience Engineering)
+In mission-critical production pipelines, a single library failure must never crash the service:
+- **PyMuPDF (`fitz`)**: Primary engine written in C/C++. Parses pages in $<10\text{ms}$.
+- **pdfplumber**: Fallback engine written in pure Python. Slower ($\sim 200\text{ms}$), but exceptionally tolerant of malformed xref tables and unusual font encodings.
+- If PyMuPDF encounters a corrupt table, execution automatically cascades to `pdfplumber` without user-visible errors.
+
+### 3. Sparse Document / Zero-Text Heuristic (Scanned PDF Detection)
+If an image or scanned photograph of a resume is converted to PDF without Optical Character Recognition (OCR), standard text extraction returns an empty string or $<50$ random punctuation marks. 
+- Phase 1 computes character density across pages:
+  $$\text{is\_scanned} = (\text{total\_characters} < 50) \land (\text{page\_count} \ge 1)$$
+- Flags `is_scanned = True` and stores `scanned_warning` in `LoadedDocument.metadata` so downstream extractors can alert recruiters.
+
+---
+
+## 📂 File-by-File Breakdown: `src/parser/loader.py`
+
+| Function / Component | Input | Output | What It Does & Edge-Case Handled |
+| :--- | :--- | :--- | :--- |
+| `LoadedDocument` (Dataclass) | Raw document attributes | Data container | Stores `raw_text`, `page_count`, `pages: List[str]`, `is_scanned: bool`, and `metadata`. Preserves per-page text lists needed for Layer 2 packet splitting. |
+| `DocumentLoader.load_file(path)` | File path string/Path | `LoadedDocument` | Universal disk loader. Validates file extension against `.pdf`, `.docx`, `.txt`. Raises clean 400 validation error if unsupported. |
+| `DocumentLoader.load_bytes(data, filename)` | In-memory byte buffer | `LoadedDocument` | Universal streaming loader for multipart API uploads (FastAPI `UploadFile`). Avoids writing temporary files to disk. |
+| `_extract_page_blocks_layout_aware(page)` | PyMuPDF `fitz.Page` | `str` | **The Core Spatial Algorithm**: Inspects block coordinates, clusters 2-column layouts, sorts top-down within columns, and joins blocks cleanly. |
+| `_load_docx(path)` / `_load_docx_stream(stream)` | DOCX file or stream | `LoadedDocument` | Table-aware Word reader. Reads standard paragraphs **plus** all table cells, joining columns with ` \| ` delimiters so skills grids are never missed. |
+| `_load_txt(path)` / `_load_txt_bytes(data)` | Plaintext bytes | `LoadedDocument` | Multi-encoding reader. Sequentially attempts `utf-8`, `utf-8-sig`, `latin-1`, and `cp1252` to prevent `UnicodeDecodeError`. |
+
+---
+
+## 🏗️ Architecture Flow Diagram
 
 ```mermaid
-sequenceDiagram
-    participant User as Recruiter/API
-    participant Loader as DocumentLoader
-    participant PyMuPDF as PyMuPDF (fitz)
-    participant Fallback as pdfplumber / docx
-    participant Norm as TextNormalizer
-
-    User->>Loader: load_file(path) or load_bytes(data, filename)
-    alt PDF Document
-        Loader->>PyMuPDF: Open & extract text per page
-        alt PyMuPDF fails or empty
-            Loader->>Fallback: Open via pdfplumber
-        end
-    else DOCX Document
-        Loader->>Fallback: python-docx (paragraphs + tables)
-    else TXT Document
-        Loader->>Loader: Multi-encoding decode (UTF-8, Latin-1, CP1252)
-    end
-    Loader-->>Norm: LoadedDocument (raw_text, file_type, page_count)
-    Norm->>Norm: Unicode NFKD normalization
-    Norm->>Norm: Regex section boundary detection
-    Norm-->>User: NormalizedDocument (clean_text, sections, word_count)
+flowchart TD
+    Upload[Uploaded Resume: PDF, DOCX, TXT] --> CheckType{Extension?}
+    
+    CheckType -- .pdf --> Fitz[PyMuPDF fitz.open]
+    Fitz --> Blocks[Extract Bounding Blocks: x0, y0, x1, y1]
+    Blocks --> LayoutCheck{2-Column Layout Detected?}
+    LayoutCheck -- Yes --> ColSort[Sort Left Column top-down, then Right Column top-down]
+    LayoutCheck -- No --> SpatialSort[Sort All Blocks sort=True]
+    ColSort --> CheckScanned{Total Chars < 50?}
+    SpatialSort --> CheckScanned
+    CheckScanned -- Yes --> SetScanned[Mark is_scanned=True & Attach Warning]
+    CheckScanned -- No --> LoadedDoc[Construct LoadedDocument with pages list]
+    SetScanned --> LoadedDoc
+    
+    Fitz -- Engine Crash / Error --> Plumber[Fallback: pdfplumber.open]
+    Plumber --> LoadedDoc
+    
+    CheckType -- .docx --> DocxEngine[python-docx: Paragraphs + Table Grids]
+    DocxEngine --> LoadedDoc
+    
+    CheckType -- .txt --> MultiEncoding[Decode: utf-8 -> latin-1 -> cp1252]
+    MultiEncoding --> LoadedDoc
 ```
 
 ---
 
-## 📄 File Breakdown & Responsibilities
+## 🚀 Skill-Up Takeaways for Your Career
 
-### 1. `src/parser/loader.py`
-- **Layman summary**: The universal reader that knows how to open and read PDFs, Word docs, and text files without crashing.
-- **Technical specifications**:
-  - **Multi-Engine PDF Extraction**: Uses PyMuPDF (`fitz`) as the high-speed primary parser ($<50\text{ms}$ per resume). Automatically degrades gracefully to `pdfplumber` if font encoding or corrupt xref tables are encountered.
-  - **Table-Aware DOCX Parsing**: Uses `python-docx` to iterate through both standard body paragraphs and table rows/cells, joining table columns with ` | ` delimiters so education tables or skill grids are never dropped.
-  - **Encoding-Tolerant TXT Reader**: Tries `utf-8`, `utf-8-sig`, `latin-1`, and `cp1252` consecutively, ensuring old Windows/Mac text files open without throwing `UnicodeDecodeError`.
-  - **Dual API**: Supports both `load_file(path)` for local disk files and `load_bytes(data, filename)` for streaming multipart web uploads.
-
-### 2. `src/parser/normalizer.py`
-- **Layman summary**: The cleaner that sweeps away weird characters, fixes spacing, and slices the text into clear sections.
-- **Technical specifications**:
-  - **Unicode Normalization (`NFKD`)**: Decomposes typographic ligatures (such as `fi`, `fl`, `ae`) and cleans accent marks into standard ASCII-compatible representations.
-  - **Control Character & Whitespace Sanitization**: Translates non-breaking spaces (`\xa0`) and Windows carriage returns (`\r\n`) to standard Unix linebreaks (`\n`), collaping redundant blank line runs to a maximum of 2.
-  - **Bullet Normalization**: Replaces various Unicode bullet codepoints (`\u2022`, `\u25CF`, etc.) with standardized markdown dashes (`\n- `).
-  - **Section Segmentation State Machine**: Evaluates lines using case-insensitive regex patterns bounded by line length ($\le 40$ characters) to isolate standard headers:
-    - `summary`: "Professional Summary", "Career Profile", "About Me".
-    - `experience`: "Work Experience", "Employment History", "Professional Background".
-    - `education`: "Academic Background", "Education & Credentials".
-    - `skills`: "Technical Skills", "Core Competencies", "Technologies".
-    - `projects`: "Key Projects", "Selected Projects".
-    - `certifications`: "Licenses & Certifications", "Accreditations".
-  - **DoS & Memory Protection**: Caps maximum character length to 50,000 characters by default to protect downstream scoring algorithms from memory exhaustion attacks.
-
----
-
-## 🧪 Verification & How to Test This Phase
-
-To verify that document ingestion and normalization are operating with 100% test coverage:
-
-```bash
-python -m pytest tests/test_loader.py -v
-```
-
-**Test Coverage Criteria:**
-- Verifies plain text file reading with metadata verification.
-- Verifies in-memory byte buffer ingestion (for web API parity).
-- Verifies error handling when an unsupported file extension (`.xyz`) is supplied.
-- Verifies normalization cleans dirty whitespace, non-breaking spaces, and properly extracts `experience`, `skills`, and `education` dictionary keys.
-- Verifies empty string handling does not raise exceptions.
+1. **Never use raw string extraction on PDFs**: 
+   Standard PDF text tools (`pypdf`, basic `fitz.get_text()`) read in PDF stream creation order, which scrambles multi-column resumes. Always use bounding-box spatial block clustering.
+2. **Always separate stream inputs from disk inputs**:
+   In cloud microservices, writing files to `/tmp` causes disk I/O bottlenecks. Supporting in-memory byte streams (`io.BytesIO`) allows horizontal scaling in serverless/Kubernetes environments.
+3. **Graceful degradation over hard crashes**:
+   Having PyMuPDF as the primary high-speed driver ($5\text{ms}$) with `pdfplumber` as fallback guarantees high availability without sacrificing raw performance.
