@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     openrouter_model: str = "google/gemini-2.0-flash-001"
     
     google_api_key: Optional[str] = None
-    google_model: str = "gemini-2.0-flash"
+    google_model: str = "gemini-2.5-flash"
     
     openai_api_key: Optional[str] = None
     openai_model: str = "gpt-4o-mini"

@@ -4,10 +4,11 @@ from src.api.schemas.candidate import CandidateProfile, ContactInfo, ExperienceI
 from src.api.schemas.matching import ATSScoreReport, ScoreCategory
 
 def test_settings_defaults():
-    s = Settings()
+    s = Settings(_env_file=None, google_api_key=None, openrouter_api_key=None, openai_api_key=None)
     assert s.app_name == "ATS Resume Parser & Match Engine"
     assert s.port == 8000
     assert s.has_llm_key is False
+    assert Settings(_env_file=None, google_api_key="mock_key").has_llm_key is True
 
 def test_candidate_profile_schema():
     profile = CandidateProfile(
