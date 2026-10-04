@@ -1,6 +1,6 @@
 /**
  * ATS Resume Parser & Evaluation Engine — Client Application
- * Author: saswa
+ * Author: SazWhatician
  */
 
 document.addEventListener("DOMContentLoaded", () => {

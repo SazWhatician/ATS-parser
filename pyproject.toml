@@ -2,7 +2,7 @@
 name = "ats-parser"
 version = "1.0.0"
 description = "Clean, local-first ATS Resume Parser & Evaluation Engine"
-authors = [{ name = "saswa" }]
+authors = [{ name = "SazWhatician" }]
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

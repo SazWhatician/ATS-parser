@@ -1,6 +1,6 @@
 # Phase 2: Document Packet Boundary Splitting & Classification
 
-**Author:** saswa  
+**Author:** SazWhatician  
 **Status:** `🟢 Completed & Upgraded`  
 **Layer in System:** **Layer 2: Document Segmentation & Packet Splitting**  
 **Core Files:** [`src/parser/splitter.py`](file:///c:/Users/saswa/Desktop/parse%20ATS/src/parser/splitter.py), [`src/core/config.py`](file:///c:/Users/saswa/Desktop/parse%20ATS/src/core/config.py)

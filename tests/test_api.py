@@ -25,7 +25,7 @@ def test_health_endpoint():
     data = response.json()
     assert data["status"] == "healthy"
     assert "engine_mode" in data
-    assert data["author"] == "saswa"
+    assert data["author"] == "SazWhatician"
 
 
 def test_parse_endpoint():

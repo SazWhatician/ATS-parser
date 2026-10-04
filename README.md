@@ -1,7 +1,7 @@
 # ATS Resume Parser & Rubric Evaluation Engine
 
 <p align="left">
-  <strong>Author & Maintainer:</strong> <a href="https://github.com/saswa">saswa</a><br>
+  <strong>Author & Maintainer:</strong> <a href="https://github.com/SazWhatician">SazWhatician</a><br>
   <strong>Engine Mode:</strong> Dual Execution (100% Local Offline Heuristic + LLM Enhanced)<br>
   <strong>Interface:</strong> Embedded Anti-AI Slop Workstation + REST API
 </p>
@@ -140,7 +140,7 @@ python -m pytest tests/ -v
   "status": "healthy",
   "app_name": "ATS Resume Parser & Match Engine",
   "version": "1.0.0",
-  "author": "saswa",
+  "author": "SazWhatician",
   "engine_mode": "heuristic",
   "has_llm_key": false,
   "supported_formats": [".pdf", ".docx", ".txt"]
@@ -214,5 +214,5 @@ For an educational, in-depth explanation of every single phase and file in the c
 
 ## 👤 Author & Credits
 
-Developed and authored by **saswa** (SazWhatician).
+Developed and authored by **SazWhatician**.
 All rights reserved. Free for local research, personal use, and portfolio demonstrations.

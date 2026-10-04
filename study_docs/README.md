@@ -1,6 +1,6 @@
 # ATS Resume Parser & Match Engine — Master Study Documentation
 
-**Author & Creator:** saswa  
+**Author & Creator:** SazWhatician  
 **Project:** Local-First ATS Resume Parser & 4-Layer Adaptive Evaluation Engine  
 **System Status:** `Phase 1: Completed 🟢` | `Phase 2: Completed 🟢` | `Phase 3: Completed 🟢` | `Phase 4: Completed 🟢`
 

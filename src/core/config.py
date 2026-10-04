@@ -14,7 +14,7 @@ class Settings(BaseSettings):
 
     app_name: str = "ATS Resume Parser & Match Engine"
     app_version: str = "1.0.0"
-    author: str = "saswa"
+    author: str = "SazWhatician"
     port: int = 8000
     host: str = "0.0.0.0"
     debug: bool = False

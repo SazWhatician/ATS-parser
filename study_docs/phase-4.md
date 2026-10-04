@@ -1,6 +1,6 @@
 # Phase 4: Neuro-Symbolic Hybrid Extraction, Rubric Matching & Workstation UI
 
-**Author:** saswa  
+**Author:** SazWhatician  
 **Status:** `🟢 Completed & Upgraded`  
 **Layer in System:** **Layer 4: Hybrid Extraction & Reconciliation Engine + REST Workstation**  
 **Core Files:** [`src/engine/extractor.py`](file:///c:/Users/saswa/Desktop/parse%20ATS/src/engine/extractor.py), [`src/engine/matcher.py`](file:///c:/Users/saswa/Desktop/parse%20ATS/src/engine/matcher.py), [`src/api/routes/parser.py`](file:///c:/Users/saswa/Desktop/parse%20ATS/src/api/routes/parser.py), [`src/static/`](file:///c:/Users/saswa/Desktop/parse%20ATS/src/static/)

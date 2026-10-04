@@ -1,6 +1,6 @@
 # Phase 3: Typographic & Fuzzy Section Normalizer & International Heuristics
 
-**Author:** saswa  
+**Author:** SazWhatician  
 **Status:** `🟢 Completed & Upgraded`  
 **Layer in System:** **Layer 3: Fuzzy & Typographic Section Boundary Detection**  
 **Core Files:** [`src/parser/normalizer.py`](file:///c:/Users/saswa/Desktop/parse%20ATS/src/parser/normalizer.py), [`src/engine/heuristics.py`](file:///c:/Users/saswa/Desktop/parse%20ATS/src/engine/heuristics.py)
